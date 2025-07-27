@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 데이터베이스
+  postgres:
+    image: postgres:15
+    container_name: stock_analysis_db
+    environment:
+      POSTGRES_DB: stock_analysis
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init_tables.sql:/docker-entrypoint-initdb.d/init_tables.sql
+    networks:
+      - stock_network
+
+  # Redis 캐시
+  redis:
+    image: redis:7-alpine
+    container_name: stock_analysis_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - stock_network
+
+  # Flask 애플리케이션
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stock_analysis_app
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/stock_analysis
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    ports:
+      - "5001:5001"
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - stock_network
+    restart: unless-stopped
+
+  # Nginx 리버스 프록시
+  nginx:
+    image: nginx:alpine
+    container_name: stock_analysis_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - app
+    networks:
+      - stock_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  stock_network:
+    driver: bridge 
