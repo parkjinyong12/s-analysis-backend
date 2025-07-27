@@ -13,6 +13,7 @@ from extensions import db
 import pandas as pd
 import io
 import os
+import re
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -405,6 +406,7 @@ def delete_stock_api(stock_id):
         }), 500
 
 
+@stock_bp.route('/search/', methods=['GET'])
 @stock_bp.route('/search', methods=['GET'])
 @read_only_transaction
 def search_stocks():
@@ -964,7 +966,7 @@ def upload_excel_stocks():
             }), 400
         
         # 필수 컬럼 확인 (한국 주식 형식)
-        required_columns = ['단축코드', '한글 종목명']
+        required_columns = ['단축코드', '한글 종목약명']
         missing_columns = [col for col in required_columns if col not in df.columns]
         
         if missing_columns:
@@ -997,10 +999,46 @@ def upload_excel_stocks():
                 if pd.isna(init_date):
                     init_date = None
                 else:
-                    # YYYY.MM.DD 형식을 YYYY-MM-DD로 변환
+                    # 날짜 형식 정규화 (다양한 형식 -> YYYY-MM-DD)
                     init_date = str(init_date).strip()
-                    if '.' in init_date:
-                        init_date = init_date.replace('.', '-')
+                    
+                    # 이미 YYYY-MM-DD 형식인 경우
+                    if re.match(r'^\d{4}-\d{2}-\d{2}$', init_date):
+                        pass  # 그대로 사용
+                    
+                    # YYYY.M.D 형식인 경우
+                    elif '.' in init_date:
+                        parts = init_date.split('.')
+                        if len(parts) == 3:
+                            year = parts[0].zfill(4)  # 연도 4자리
+                            month = parts[1].zfill(2)  # 월 2자리
+                            day = parts[2].zfill(2)    # 일 2자리
+                            init_date = f"{year}-{month}-{day}"
+                        else:
+                            init_date = None  # 잘못된 형식이면 None으로 설정
+                    
+                    # YYYY/MM/DD 형식인 경우
+                    elif '/' in init_date:
+                        parts = init_date.split('/')
+                        if len(parts) == 3:
+                            year = parts[0].zfill(4)  # 연도 4자리
+                            month = parts[1].zfill(2)  # 월 2자리
+                            day = parts[2].zfill(2)    # 일 2자리
+                            init_date = f"{year}-{month}-{day}"
+                        else:
+                            init_date = None
+                    
+                    # YYYYMMDD 형식인 경우
+                    elif len(init_date) == 8 and init_date.isdigit():
+                        year = init_date[:4]
+                        month = init_date[4:6]
+                        day = init_date[6:8]
+                        init_date = f"{year}-{month}-{day}"
+                    
+                    # 기타 형식은 None으로 설정
+                    else:
+                        logger.warning(f"지원하지 않는 날짜 형식: {init_date}")
+                        init_date = None
                 
                 # 추가 정보 (선택적)
                 market_type = row.get('시장구분', '')

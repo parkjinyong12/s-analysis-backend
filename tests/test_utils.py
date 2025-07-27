@@ -170,14 +170,8 @@ class TestDataValidation:
     
     def test_email_validation(self):
         """이메일 검증 테스트"""
-        from models.user import User
-        
-        # 올바른 이메일
-        user = User(username='test', email='test@example.com')
-        assert user.email == 'test@example.com'
-        
-        # 잘못된 이메일 형식 (실제로는 검증 로직이 없으므로 테스트 제거)
-        # User 모델에는 이메일 검증 로직이 없음
+        # User 모델이 제거되었으므로 테스트 제거
+        pass
     
     def test_price_validation(self):
         """가격 검증 테스트"""

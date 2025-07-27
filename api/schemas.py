@@ -55,19 +55,7 @@ class TradingSchema:
             'total_count': len(tradings)
         }
 
-class UserSchema:
-    """사용자 데이터 스키마"""
-    
-    @staticmethod
-    def user_response(user_data: Dict[str, Any]) -> Dict[str, Any]:
-        """사용자 응답 스키마"""
-        return {
-            'id': user_data.get('id'),
-            'username': user_data.get('username'),
-            'email': user_data.get('email'),
-            'created_at': user_data.get('created_at'),
-            'updated_at': user_data.get('updated_at')
-        }
+
 
 class ErrorSchema:
     """에러 응답 스키마"""

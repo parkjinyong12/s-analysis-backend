@@ -14,7 +14,8 @@ def health_check():
     """애플리케이션 헬스체크"""
     try:
         # 데이터베이스 연결 확인
-        db.session.execute('SELECT 1')
+        from sqlalchemy import text
+        db.session.execute(text('SELECT 1'))
         db_status = 'healthy'
     except Exception as e:
         logger.error('Database health check failed', error=str(e))
@@ -34,7 +35,8 @@ def readiness_check():
     """애플리케이션 준비 상태 확인"""
     try:
         # 데이터베이스 연결 확인
-        db.session.execute('SELECT 1')
+        from sqlalchemy import text
+        db.session.execute(text('SELECT 1'))
         return jsonify({'status': 'ready'}), 200
     except Exception as e:
         logger.error('Readiness check failed', error=str(e))

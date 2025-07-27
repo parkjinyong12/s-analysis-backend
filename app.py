@@ -42,8 +42,6 @@ def initialize_extensions(app):
 
 def register_blueprints(app):
     """블루프린트 등록"""
-    from views.user import user_bp
-    from views.sample import sample_bp
     from views.stock import stock_bp
     from views.trading import trading_bp
     from views.data_collector import collector_bp
@@ -51,8 +49,6 @@ def register_blueprints(app):
     from views.history import history_bp
     from views.health import health_bp
     
-    app.register_blueprint(user_bp, url_prefix='/api/v1/users')
-    app.register_blueprint(sample_bp, url_prefix='/api/v1/samples')
     app.register_blueprint(stock_bp, url_prefix='/api/v1/stocks')
     app.register_blueprint(trading_bp, url_prefix='/api/v1/trading')
     app.register_blueprint(collector_bp, url_prefix='/api/v1/collector')

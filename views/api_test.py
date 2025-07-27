@@ -30,23 +30,19 @@ def create_backup():
     """현재 데이터베이스 상태 백업"""
     try:
         from models.stock import StockList
-        from models.sample import Sample
         from models.trading import StockInvestorTrading
-        from models.user import User
         
         backup = {
             'stocks': [{'id': s.id, 'stock_code': s.stock_code, 'stock_name': s.stock_name, 
                        'init_date': s.init_date, 'institution_accum_init': s.institution_accum_init, 
                        'foreigner_accum_init': s.foreigner_accum_init} for s in StockList.query.all()],
-            'samples': [{'id': s.id, 'name': s.name, 'description': s.description} for s in Sample.query.all()],
             'trading_data': [{'id': t.id, 'stock_code': t.stock_code, 'stock_name': t.stock_name,
                              'trade_date': t.trade_date, 'close_price': t.close_price,
                              'institution_net_buy': t.institution_net_buy, 'foreigner_net_buy': t.foreigner_net_buy,
                              'institution_accum': t.institution_accum, 'foreigner_accum': t.foreigner_accum,
                              'institution_trend_signal': t.institution_trend_signal, 'institution_trend_score': t.institution_trend_score,
                              'foreigner_trend_signal': t.foreigner_trend_signal, 'foreigner_trend_score': t.foreigner_trend_score} 
-                            for t in StockInvestorTrading.query.all()],
-            'users': [{'id': u.id, 'username': u.username, 'email': u.email} for u in User.query.all()]
+                            for t in StockInvestorTrading.query.all()]
         }
         
         test_session_state['backup_data'] = backup
@@ -64,9 +60,7 @@ def restore_backup():
     try:
         from extensions import db
         from models.stock import StockList
-        from models.sample import Sample
         from models.trading import StockInvestorTrading
-        from models.user import User
         
         if not test_session_state['backup_data']:
             logger.warning("복원할 백업 데이터가 없습니다.")
@@ -77,25 +71,15 @@ def restore_backup():
         # 현재 데이터 삭제
         StockInvestorTrading.query.delete()
         StockList.query.delete()
-        Sample.query.delete()
-        User.query.delete()
         
         # 백업 데이터 복원
         for stock_data in backup['stocks']:
             stock = StockList(**stock_data)
             db.session.add(stock)
         
-        for sample_data in backup['samples']:
-            sample = Sample(**sample_data)
-            db.session.add(sample)
-        
         for trading_data in backup['trading_data']:
             trading = StockInvestorTrading(**trading_data)
             db.session.add(trading)
-        
-        for user_data in backup['users']:
-            user = User(**user_data)
-            db.session.add(user)
         
         db.session.commit()
         
@@ -211,9 +195,7 @@ def test_mode_status():
             'test_start_time': test_session_state['test_start_time'],
             'backup_summary': {
                 'stocks_count': len(backup.get('stocks', [])),
-                'samples_count': len(backup.get('samples', [])),
-                'trading_data_count': len(backup.get('trading_data', [])),
-                'users_count': len(backup.get('users', []))
+                'trading_data_count': len(backup.get('trading_data', []))
             },
             'timestamp': datetime.now().isoformat()
         }), 200
@@ -235,39 +217,32 @@ def test_all_endpoints():
     
     # 테스트할 엔드포인트 목록 (읽기 전용만)
     endpoints = [
-        # Sample API (읽기 전용)
-        {'name': 'Sample 목록 조회', 'method': 'GET', 'url': f'{base_url}/samples/', 'expected_status': 200},
-        {'name': 'Sample 검색', 'method': 'GET', 'url': f'{base_url}/samples/search?name=Test', 'expected_status': 200},
-        
         # Stock API (읽기 전용)
-        {'name': 'Stock 목록 조회', 'method': 'GET', 'url': f'{base_url}/stocks/', 'expected_status': 200},
-        {'name': 'Stock 검색', 'method': 'GET', 'url': f'{base_url}/stocks/search?name=삼성', 'expected_status': 200},
-        {'name': 'Stock 코드별 조회', 'method': 'GET', 'url': f'{base_url}/stocks/code/005930', 'expected_status': 200},
+        {'name': 'Stock 목록 조회', 'method': 'GET', 'url': f'{base_url}/api/v1/stocks/', 'expected_status': 200},
+        {'name': 'Stock 검색', 'method': 'GET', 'url': f'{base_url}/api/v1/stocks/search?name=삼성', 'expected_status': 200},
+        {'name': 'Stock 코드별 조회', 'method': 'GET', 'url': f'{base_url}/api/v1/stocks/code/005930', 'expected_status': 200},
         
-                    # Trading API (읽기 전용)
-            {'name': 'Trading 목록 조회', 'method': 'GET', 'url': f'{base_url}/trading/', 'expected_status': 200},
-            {'name': 'Trading 검색', 'method': 'GET', 'url': f'{base_url}/trading/search?query=삼천당제약', 'expected_status': 200},
-        {'name': 'Trading 날짜 범위 조회', 'method': 'GET', 'url': f'{base_url}/trading/date-range?start_date=2024-01-01&end_date=2024-12-31', 'expected_status': 200},
-        {'name': 'Trading 주식별 조회', 'method': 'GET', 'url': f'{base_url}/trading/stock/005930', 'expected_status': 200},
+        # Trading API (읽기 전용)
+        {'name': 'Trading 목록 조회', 'method': 'GET', 'url': f'{base_url}/api/v1/trading/', 'expected_status': 200},
+        {'name': 'Trading 검색', 'method': 'GET', 'url': f'{base_url}/api/v1/trading/search?query=삼천당제약', 'expected_status': 200},
+        {'name': 'Trading 날짜 범위 조회', 'method': 'GET', 'url': f'{base_url}/api/v1/trading/date-range?start_date=2024-01-01&end_date=2024-12-31', 'expected_status': 200},
+        {'name': 'Trading 주식별 조회', 'method': 'GET', 'url': f'{base_url}/api/v1/trading/stock/005930', 'expected_status': 200},
         
         # Collector API (상태 조회만)
-        {'name': 'Collector 상태 조회', 'method': 'GET', 'url': f'{base_url}/collector/status', 'expected_status': 200},
-        {'name': 'Collector 사용 가능한 주식 목록', 'method': 'GET', 'url': f'{base_url}/collector/stocks', 'expected_status': 200},
-        
-        # User API (읽기 전용)
-        {'name': 'User 목록 조회', 'method': 'GET', 'url': f'{base_url}/users/', 'expected_status': 200},
+        {'name': 'Collector 상태 조회', 'method': 'GET', 'url': f'{base_url}/api/v1/collector/status', 'expected_status': 200},
+        {'name': 'Collector 사용 가능한 주식 목록', 'method': 'GET', 'url': f'{base_url}/api/v1/collector/stocks', 'expected_status': 200},
         
         # API Test
-        {'name': 'Health Check', 'method': 'GET', 'url': f'{base_url}/api-test/health', 'expected_status': 200},
-        {'name': 'Database 테스트', 'method': 'GET', 'url': f'{base_url}/api-test/database', 'expected_status': 200},
-        {'name': '테스트 모드 상태', 'method': 'GET', 'url': f'{base_url}/api-test/test-mode/status', 'expected_status': 200},
+        {'name': 'Health Check', 'method': 'GET', 'url': f'{base_url}/api/v1/test/health', 'expected_status': 200},
+        {'name': 'Database 테스트', 'method': 'GET', 'url': f'{base_url}/api/v1/test/database', 'expected_status': 200},
+        {'name': '테스트 모드 상태', 'method': 'GET', 'url': f'{base_url}/api/v1/test/test-mode/status', 'expected_status': 200},
         
         # History API (읽기 전용)
-        {'name': 'History 통계', 'method': 'GET', 'url': f'{base_url}/history/stats', 'expected_status': 200},
-        {'name': 'History 최근 활동', 'method': 'GET', 'url': f'{base_url}/history/latest', 'expected_status': 200},
-        {'name': 'History 활동 요약', 'method': 'GET', 'url': f'{base_url}/history/summary', 'expected_status': 200},
-        {'name': 'History 데이터 히스토리', 'method': 'GET', 'url': f'{base_url}/history/data', 'expected_status': 200},
-        {'name': 'History 시스템 로그', 'method': 'GET', 'url': f'{base_url}/history/system', 'expected_status': 200},
+        {'name': 'History 통계', 'method': 'GET', 'url': f'{base_url}/api/v1/history/stats', 'expected_status': 200},
+        {'name': 'History 최근 활동', 'method': 'GET', 'url': f'{base_url}/api/v1/history/latest', 'expected_status': 200},
+        {'name': 'History 활동 요약', 'method': 'GET', 'url': f'{base_url}/api/v1/history/summary', 'expected_status': 200},
+        {'name': 'History 데이터 히스토리', 'method': 'GET', 'url': f'{base_url}/api/v1/history/data', 'expected_status': 200},
+        {'name': 'History 시스템 로그', 'method': 'GET', 'url': f'{base_url}/api/v1/history/system', 'expected_status': 200},
     ]
     
     for endpoint in endpoints:
@@ -434,26 +409,12 @@ def test_database_connection():
     """
     try:
         from extensions import db
-        from models.sample import Sample
         from models.stock import StockList
         from models.trading import StockInvestorTrading
         
         tables_status = {}
         
         # 각 테이블의 레코드 수 확인
-        try:
-            sample_count = Sample.query.count()
-            tables_status['tb_sample'] = {
-                'status': 'accessible',
-                'record_count': sample_count
-            }
-        except Exception as e:
-            tables_status['tb_sample'] = {
-                'status': 'error',
-                'error': str(e),
-                'record_count': 0
-            }
-        
         try:
             stock_count = StockList.query.count()
             tables_status['stock_list'] = {
@@ -505,15 +466,13 @@ def initialize_database():
     try:
         from extensions import db
         from models.stock import StockList
-        from models.sample import Sample
         from models.trading import StockInvestorTrading
-        from models.user import User
         
         # 테이블 생성
         db.create_all()
         
         # 테이블 개수 확인
-        total_tables = 4  # stock_list, tb_sample, stock_investor_trading, user
+        total_tables = 2  # stock_list, stock_investor_trading
         
         return jsonify({
             'status': 'success',
@@ -538,9 +497,7 @@ def reset_database():
     try:
         from extensions import db
         from models.stock import StockList
-        from models.sample import Sample
         from models.trading import StockInvestorTrading
-        from models.user import User
         
         # 삭제 전 거래 데이터 개수 확인
         trading_count = StockInvestorTrading.query.count()
@@ -548,8 +505,6 @@ def reset_database():
         # 모든 데이터 삭제
         StockInvestorTrading.query.delete()
         StockList.query.delete()
-        Sample.query.delete()
-        User.query.delete()
         
         db.session.commit()
         
