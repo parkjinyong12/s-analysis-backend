@@ -634,6 +634,162 @@ class DataCollectorService:
             logger.error(f"데이터 수집 및 저장 실패: {stock_code}, {e}")
             return False
     
+    @staticmethod
+    def collect_incremental_data(
+        stock_code: Optional[str] = None, 
+        days_back: int = 30,
+        max_pages: int = 5,
+        force_collect: bool = False
+    ) -> Dict[str, any]:
+        """
+        증분 크롤링: 누락된 최신 데이터만 수집
+        
+        Args:
+            stock_code (Optional[str]): 특정 주식 코드 (None이면 전체)
+            days_back (int): 확인할 기간 (일 단위)
+            max_pages (int): 최대 페이지 수
+            force_collect (bool): 강제 수집 여부
+            
+        Returns:
+            Dict: 수집 결과 통계
+        """
+        try:
+            from services.trading_service import TradingService
+            
+            logger.info(f"증분 크롤링 시작 - 기간: 최근 {days_back}일, 강제수집: {force_collect}")
+            
+            results = {
+                'total_stocks': 0,
+                'collected_stocks': 0,
+                'skipped_stocks': 0,
+                'failed_stocks': 0,
+                'total_missing_dates': 0,
+                'collected_dates': 0,
+                'details': []
+            }
+            
+            # 대상 주식 목록 결정
+            if stock_code:
+                # 특정 주식만
+                if not TradingService.validate_stock_code(stock_code):
+                    raise ValueError(f"잘못된 주식 코드: {stock_code}")
+                
+                stock = StockService.get_stock_by_code(stock_code)
+                if not stock:
+                    raise ValueError(f"주식을 찾을 수 없음: {stock_code}")
+                
+                target_stocks = [stock]
+            else:
+                # 전체 주식 목록
+                target_stocks = StockService.get_all_stocks()
+            
+            results['total_stocks'] = len(target_stocks)
+            
+            # 각 주식별로 증분 수집
+            for stock in target_stocks:
+                try:
+                    stock_detail = {
+                        'stock_code': stock.stock_code,
+                        'stock_name': stock.stock_name,
+                        'missing_dates': [],
+                        'collected_dates': [],
+                        'status': 'processing'
+                    }
+                    
+                    # 1. 누락된 날짜 찾기
+                    missing_dates = TradingService.get_missing_trade_dates(
+                        stock.stock_code, days_back
+                    )
+                    
+                    stock_detail['missing_dates'] = missing_dates
+                    results['total_missing_dates'] += len(missing_dates)
+                    
+                    # 2. 수집 필요성 판단
+                    if not missing_dates and not force_collect:
+                        stock_detail['status'] = 'skipped'
+                        stock_detail['reason'] = '누락된 데이터 없음'
+                        results['skipped_stocks'] += 1
+                        results['details'].append(stock_detail)
+                        logger.info(f"건너뛰기: {stock.stock_code} - 누락된 데이터 없음")
+                        continue
+                    
+                    # 3. 강제 수집이거나 누락된 데이터가 있는 경우 수집
+                    logger.info(f"수집 시작: {stock.stock_code} - 누락 날짜 {len(missing_dates)}개")
+                    
+                    # 데이터 크롤링 (최신 데이터 위주로 적은 페이지만)
+                    df = DataCollectorService.fetch_stock_data(
+                        stock.stock_code, 
+                        years=1,  # 1년으로 제한 (최신 데이터 위주)
+                        max_pages=max_pages
+                    )
+                    
+                    if df is None or df.empty:
+                        stock_detail['status'] = 'failed'
+                        stock_detail['reason'] = '크롤링 데이터 없음'
+                        results['failed_stocks'] += 1
+                    else:
+                        # 4. 데이터 저장 (기존 메서드 활용)
+                        success = DataCollectorService.save_trading_data(
+                            stock.stock_code, stock.stock_name, df
+                        )
+                        
+                        if success:
+                            # 수집된 날짜 계산 (누락 날짜 중 실제로 수집된 것들)
+                            collected_dates = []
+                            for date_str in missing_dates:
+                                # df에서 해당 날짜가 있는지 확인
+                                if not df.empty and 'trade_date' in df.columns:
+                                    df_dates = df['trade_date'].dt.strftime('%Y-%m-%d').tolist()
+                                    if date_str in df_dates:
+                                        collected_dates.append(date_str)
+                            
+                            stock_detail['collected_dates'] = collected_dates
+                            stock_detail['status'] = 'success'
+                            results['collected_stocks'] += 1
+                            results['collected_dates'] += len(collected_dates)
+                            
+                            logger.info(f"수집 완료: {stock.stock_code} - {len(collected_dates)}개 날짜")
+                        else:
+                            stock_detail['status'] = 'failed'
+                            stock_detail['reason'] = '데이터 저장 실패'
+                            results['failed_stocks'] += 1
+                    
+                    results['details'].append(stock_detail)
+                    
+                    # 요청 간 대기
+                    time.sleep(DataCollectorService.REQUEST_DELAY)
+                    
+                except Exception as e:
+                    stock_detail['status'] = 'failed'
+                    stock_detail['reason'] = str(e)
+                    results['failed_stocks'] += 1
+                    results['details'].append(stock_detail)
+                    logger.error(f"증분 수집 실패: {stock.stock_code} - {e}")
+                    continue
+            
+            # 결과 요약
+            logger.info(f"""
+증분 크롤링 완료:
+- 대상 주식: {results['total_stocks']}개
+- 수집 완료: {results['collected_stocks']}개  
+- 건너뛰기: {results['skipped_stocks']}개
+- 실패: {results['failed_stocks']}개
+- 총 누락 날짜: {results['total_missing_dates']}개
+- 수집된 날짜: {results['collected_dates']}개
+            """)
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"증분 크롤링 중 오류: {e}")
+            return {
+                'error': str(e),
+                'total_stocks': 0,
+                'collected_stocks': 0,
+                'skipped_stocks': 0,
+                'failed_stocks': 0
+            }
+    
     @staticmethod  
     def collect_all_stocks_data(years: int = 3, max_pages: int = 10) -> Dict[str, any]:
         """

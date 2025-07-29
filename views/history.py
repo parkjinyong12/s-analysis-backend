@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Blueprint 생성
-history_bp = Blueprint('history', __name__, url_prefix='/history')
+history_bp = Blueprint('history', __name__)
 
 
 @history_bp.route('/data', methods=['GET'])

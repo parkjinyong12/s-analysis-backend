@@ -503,6 +503,91 @@ class TradingService:
             return query.all()
         except Exception as e:
             raise Exception(f"날짜 범위 거래 데이터 조회 중 오류 발생: {str(e)}") from e
+    
+    @staticmethod
+    def get_latest_trade_date(stock_code: Optional[str] = None) -> Optional[str]:
+        """
+        최신 거래 데이터 날짜 조회
+        
+        Args:
+            stock_code (Optional[str]): 주식 코드 (없으면 전체에서 최신 날짜)
+            
+        Returns:
+            Optional[str]: 최신 거래 날짜 (YYYY-MM-DD) 또는 None
+        """
+        try:
+            from sqlalchemy import func
+            
+            if stock_code:
+                # 특정 주식의 최신 날짜
+                if not TradingService.validate_stock_code(stock_code):
+                    raise ValueError("주식 코드 형식이 올바르지 않습니다. (6자리 숫자)")
+                
+                result = db.session.query(func.max(StockInvestorTrading.trade_date)).filter(
+                    StockInvestorTrading.stock_code == stock_code
+                ).scalar()
+            else:
+                # 전체 데이터에서 최신 날짜
+                result = db.session.query(func.max(StockInvestorTrading.trade_date)).scalar()
+            
+            return result.strftime('%Y-%m-%d') if result else None
+            
+        except Exception as e:
+            raise Exception(f"최신 거래 날짜 조회 중 오류 발생: {str(e)}") from e
+    
+    @staticmethod
+    def get_missing_trade_dates(stock_code: str, days_back: int = 30) -> List[str]:
+        """
+        누락된 거래 날짜 찾기 (최근 N일 기준)
+        
+        Args:
+            stock_code (str): 주식 코드
+            days_back (int): 확인할 기간 (일 단위, 기본값: 30일)
+            
+        Returns:
+            List[str]: 누락된 날짜 목록 (YYYY-MM-DD)
+        """
+        try:
+            from datetime import datetime, timedelta
+            
+            if not TradingService.validate_stock_code(stock_code):
+                raise ValueError("주식 코드 형식이 올바르지 않습니다. (6자리 숫자)")
+            
+            # 기준 날짜 계산 (주말 제외)
+            end_date = datetime.now().date()
+            start_date = end_date - timedelta(days=days_back)
+            
+            # 기존 데이터 조회
+            existing_dates = set()
+            existing_data = StockInvestorTrading.query.filter(
+                StockInvestorTrading.stock_code == stock_code,
+                StockInvestorTrading.trade_date >= start_date,
+                StockInvestorTrading.trade_date <= end_date
+            ).all()
+            
+            for data in existing_data:
+                if isinstance(data.trade_date, str):
+                    existing_dates.add(data.trade_date)
+                else:
+                    existing_dates.add(data.trade_date.strftime('%Y-%m-%d'))
+            
+            # 누락된 날짜 찾기 (주말 제외)
+            missing_dates = []
+            current_date = start_date
+            
+            while current_date <= end_date:
+                # 주말 제외 (월요일=0, 일요일=6)
+                if current_date.weekday() < 5:  # 월~금만
+                    date_str = current_date.strftime('%Y-%m-%d')
+                    if date_str not in existing_dates:
+                        missing_dates.append(date_str)
+                
+                current_date += timedelta(days=1)
+            
+            return missing_dates
+            
+        except Exception as e:
+            raise Exception(f"누락된 거래 날짜 조회 중 오류 발생: {str(e)}") from e
 
     @staticmethod
     def update_trading_data(

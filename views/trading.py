@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Blueprint 생성
-trading_bp = Blueprint('trading', __name__, url_prefix='/trading')
+trading_bp = Blueprint('trading', __name__)
 
 
 @trading_bp.route('/', methods=['GET'])

@@ -17,7 +17,7 @@ from database.transaction import safe_transaction, read_only_transaction
 logger = logging.getLogger(__name__)
 
 # 블루프린트 생성
-collector_bp = Blueprint('collector', __name__, url_prefix='/collector')
+collector_bp = Blueprint('collector', __name__)
 
 # 전역 상태 관리 (프론트엔드 호환성을 위해)
 collection_status = {
@@ -699,6 +699,178 @@ def get_batch_monitoring():
         return jsonify({
             'error': '모니터링 정보 조회 중 오류가 발생했습니다.',
             'message': str(e)
+        }), 500
+
+
+@collector_bp.route('/incremental', methods=['POST'])
+@safe_transaction
+def start_incremental_collection():
+    """
+    증분 크롤링 시작 (누락된 최신 데이터만 수집)
+    
+    Request Body:
+        stock_code (str, optional): 특정 주식 코드 (없으면 전체)
+        days_back (int, optional): 확인할 기간 (일 단위, 기본값: 30)
+        max_pages (int, optional): 최대 페이지 수 (기본값: 5)
+        force_collect (bool, optional): 강제 수집 여부 (기본값: False)
+    
+    Returns:
+        JSON: 증분 수집 결과
+    """
+    try:
+        # 요청 데이터 파싱
+        data = request.get_json() or {}
+        
+        stock_code = data.get('stock_code')
+        days_back = int(data.get('days_back', 30))
+        max_pages = int(data.get('max_pages', 5))
+        force_collect = bool(data.get('force_collect', False))
+        
+        # 입력값 검증
+        if stock_code and not re.match(r'^\d{6}$', stock_code):
+            return jsonify({
+                'status': 'error',
+                'error': '주식 코드는 6자리 숫자여야 합니다',
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        if days_back <= 0 or days_back > 365:
+            return jsonify({
+                'status': 'error',
+                'error': '확인 기간은 1~365일 사이여야 합니다',
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        if max_pages <= 0 or max_pages > 20:
+            return jsonify({
+                'status': 'error',
+                'error': '최대 페이지 수는 1~20 사이여야 합니다',
+                'timestamp': datetime.now().isoformat()
+            }), 400
+                
+        logger.info(f"증분 크롤링 시작 - 주식: {stock_code or '전체'}, 기간: {days_back}일")
+        
+        # 증분 수집 실행
+        results = DataCollectorService.collect_incremental_data(
+            stock_code=stock_code,
+            days_back=days_back,
+            max_pages=max_pages,
+            force_collect=force_collect
+        )
+        
+        # 에러가 있는 경우
+        if 'error' in results:
+            return jsonify({
+                'status': 'error',
+                'error': results['error'],
+                'timestamp': datetime.now().isoformat()
+            }), 500
+        
+        # 성공 응답
+        return jsonify({
+            'status': 'success',
+            'message': '증분 크롤링이 완료되었습니다',
+            'results': results,
+            'parameters': {
+                'stock_code': stock_code,
+                'days_back': days_back,
+                'max_pages': max_pages,
+                'force_collect': force_collect
+            },
+            'timestamp': datetime.now().isoformat()
+        }), 200
+        
+    except ValueError as e:
+        logger.warning(f"증분 크롤링 입력값 오류: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': f'입력값 오류: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 400
+        
+    except Exception as e:
+        logger.error(f"증분 크롤링 중 오류: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': '증분 크롤링 중 오류가 발생했습니다',
+            'message': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@collector_bp.route('/check-missing', methods=['GET'])
+def check_missing_dates():
+    """
+    누락된 거래 날짜 확인 (수집 전 미리보기)
+    
+    Query Parameters:
+        stock_code (str): 주식 코드 (필수)
+        days_back (int, optional): 확인할 기간 (일 단위, 기본값: 30)
+    
+    Returns:
+        JSON: 누락된 날짜 정보
+    """
+    try:
+        stock_code = request.args.get('stock_code', '').strip()
+        days_back = int(request.args.get('days_back', 30))
+        
+        if not stock_code:
+            return jsonify({
+                'status': 'error',
+                'error': '주식 코드는 필수입니다',
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        if not re.match(r'^\d{6}$', stock_code):
+            return jsonify({
+                'status': 'error',
+                'error': '주식 코드는 6자리 숫자여야 합니다',
+                'timestamp': datetime.now().isoformat()
+            }), 400
+        
+        # 주식 정보 확인
+        from services.stock_service import StockService
+        stock = StockService.get_stock_by_code(stock_code)
+        if not stock:
+            return jsonify({
+                'status': 'error',
+                'error': f'주식을 찾을 수 없습니다: {stock_code}',
+                'timestamp': datetime.now().isoformat()
+            }), 404
+        
+        # 누락된 날짜와 최신 데이터 조회
+        from services.trading_service import TradingService
+        
+        missing_dates = TradingService.get_missing_trade_dates(stock_code, days_back)
+        latest_date = TradingService.get_latest_trade_date(stock_code)
+        
+        return jsonify({
+            'status': 'success',
+            'stock_info': {
+                'stock_code': stock.stock_code,
+                'stock_name': stock.stock_name
+            },
+            'latest_trade_date': latest_date,
+            'missing_dates': missing_dates,
+            'missing_count': len(missing_dates),
+            'check_period_days': days_back,
+            'timestamp': datetime.now().isoformat()
+        }), 200
+        
+    except ValueError as e:
+        return jsonify({
+            'status': 'error',
+            'error': f'입력값 오류: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 400
+        
+    except Exception as e:
+        logger.error(f"누락 날짜 확인 중 오류: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': '누락 날짜 확인 중 오류가 발생했습니다',
+            'message': str(e),
+            'timestamp': datetime.now().isoformat()
         }), 500
 
 

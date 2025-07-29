@@ -19,7 +19,7 @@ import re
 logger = logging.getLogger(__name__)
 
 # Blueprint 생성
-stock_bp = Blueprint('stock', __name__, url_prefix='/stocks')
+stock_bp = Blueprint('stock', __name__)
 
 
 @stock_bp.route('/', methods=['GET'])

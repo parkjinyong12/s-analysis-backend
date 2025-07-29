@@ -10,7 +10,7 @@ from datetime import datetime
 import copy
 
 # Blueprint 생성
-api_test_bp = Blueprint('api_test', __name__, url_prefix='/api-test')
+api_test_bp = Blueprint('api_test', __name__)
 
 # 로거 설정
 logger = logging.getLogger(__name__)

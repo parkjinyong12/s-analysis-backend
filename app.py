@@ -16,6 +16,9 @@ def create_app(config_name=None):
     else:
         app.config.from_object(get_config())
     
+    # URL 끝의 슬래시를 엄격하게 검사하지 않도록 설정
+    app.url_map.strict_slashes = False
+    
     # 로깅 설정
     setup_logging(app)
     
